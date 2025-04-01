@@ -1,0 +1,161 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>YET Dashboard</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#000000"/>
+  <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body {
+      margin: 0;
+      background-color: #0b0b0c;
+      color: #fff;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .container {
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 26px;
+    }
+    .balance, .action {
+      background: #1a1a1d;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 12px;
+    }
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: none;
+    }
+    input {
+      background: #111;
+      color: #fff;
+    }
+    button {
+      background-color: #444;
+      color: #fff;
+    }
+    #reader {
+      width: 100%;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>YT Dashboard</h1>
+
+  <div class="balance">
+    <h3>Wallet</h3>
+    <p id="walletAddress">Not connected</p>
+    <p id="ethBalance">ETH: --</p>
+    <p id="yetBalance">YET: --</p>
+    <p id="ethPrice">ETH/USD: --</p>
+    <p id="vaultBalance">Vault: -- ETH</p>
+    <button onclick="connectWallet()">Connect Wallet</button>
+  </div>
+
+  <div class="action">
+    <h3>Withdraw & Mint</h3>
+    <input type="number" id="usdAmount" placeholder="Enter USD to withdraw" />
+    <button onclick="mintYET()">Withdraw + Mint YET</button>
+    <p id="mintResult"></p>
+  </div>
+
+  <div class="action">
+    <h3>Redeem YET</h3>
+    <input type="number" id="redeemAmount" placeholder="Amount of YET" />
+    <button onclick="redeemYET()">Redeem for ETH</button>
+    <p id="redeemResult"></p>
+  </div>
+
+  <div class="action">
+    <h3>Scan Wallet QR</h3>
+    <div id="reader"></div>
+    <p id="qrResult"></p>
+  </div>
+</div>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js');
+  }
+
+  let userWallet = "";
+
+  async function connectWallet() {
+    if (window.ethereum) {
+      const web3 = new Web3(window.ethereum);
+      await ethereum.request({ method: "eth_requestAccounts" });
+      const accounts = await web3.eth.getAccounts();
+      userWallet = accounts[0];
+      document.getElementById("walletAddress").innerText = userWallet;
+      fetchData();
+    } else {
+      alert("Install MetaMask or Trust Wallet.");
+    }
+  }
+
+  async function fetchData() {
+    const eth = await fetch("/wallet-balance/" + userWallet).then(r => r.json());
+    const yet = await fetch("/token-balance/" + userWallet).then(r => r.json());
+    const price = await fetch("/eth-price").then(r => r.json());
+    const vault = await fetch("/vault-balance").then(r => r.json());
+
+    document.getElementById("ethBalance").innerText = "ETH: " + eth.balance;
+    document.getElementById("yetBalance").innerText = "YET: " + yet.balance;
+    document.getElementById("ethPrice").innerText = "ETH/USD: $" + price.eth_usd;
+    document.getElementById("vaultBalance").innerText = "Vault: " + vault.eth_balance + " ETH";
+  }
+
+  async function mintYET() {
+    const usd = parseFloat(document.getElementById("usdAmount").value);
+    const res = await fetch("/mint-token/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_address: userWallet, usd_amount: usd })
+    });
+    const data = await res.json();
+    document.getElementById("mintResult").innerText = res.ok ? `✅ Minted ${data.minted_usd_value} YET` : `❌ ${data.detail}`;
+  }
+
+  async function redeemYET() {
+    const amount = parseFloat(document.getElementById("redeemAmount").value);
+    const res = await fetch("/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount_yet: amount })
+    });
+    const data = await res.json();
+    document.getElementById("redeemResult").innerText = res.ok ? `✅ Redeemed ${data.redeemed_yet} YET` : `❌ ${data.detail}`;
+  }
+
+  const qrScanner = new Html5Qrcode("reader");
+  Html5Qrcode.getCameras().then(devices => {
+    if (devices && devices.length) {
+      const camId = devices[0].id;
+      qrScanner.start(
+        camId,
+        { fps: 10, qrbox: 200 },
+        qrCode => {
+          document.getElementById("qrResult").innerText = "Scanned Wallet: " + qrCode;
+        },
+        err => console.warn(err)
+      );
+    }
+  });
+</script>
+
+</body>
+</html>
